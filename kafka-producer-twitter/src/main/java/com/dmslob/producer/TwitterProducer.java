@@ -15,6 +15,8 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
@@ -25,17 +27,10 @@ import java.util.concurrent.TimeUnit;
 // kafka-topics --zookeeper 127.0.0.1:2181 --create --topic twitter_tweets --partitions 6 --replication-factor 1
 public class TwitterProducer {
 
-    private static final String HOST = "127.0.0.1:9091";
     private static final Logger logger = LoggerFactory.getLogger(TwitterProducer.class.getName());
 
+    private Properties resourcesProp = getProperties();
     private List<String> terms = Lists.newArrayList("bitcoin", "usa", "sport");
-
-    // to get token -> https://developer.twitter.com
-    private String consumerKey = "88hh77miF6huqtCDKUSxqT2ig";
-    private String consumerSecret = "QhiRUMmzsW1D6nBVnGlpj9aO2QwwVTo02dKSrAcHk8LArvbezl";
-    private String token = "851347051141115904-4RTCFUyh7fVzMQkW0UcZQ44NJPGAafo";
-    private String secret = "xevVTWcWF8IKWl8nwGODaonMrPE9coJOf9DgzfgIH6MqK";
-
 
     public TwitterProducer() {
     }
@@ -45,6 +40,9 @@ public class TwitterProducer {
     }
 
     private void run() {
+        final String TWITTER_TOPIC = resourcesProp.getProperty("producer.twitter.topic");
+
+
         logger.info("Setup");
         /** Set up your blocking queues: Be sure to size these properly based on expected TPS of your stream */
         BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(1000);
@@ -77,7 +75,7 @@ public class TwitterProducer {
             }
             if (msg != null) {
                 logger.info(msg);
-                producer.send(new ProducerRecord<>("twitter_tweets", null, msg), new Callback() {
+                producer.send(new ProducerRecord<>(TWITTER_TOPIC, null, msg), new Callback() {
                     @Override
                     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
                         if (null != e) {
@@ -91,6 +89,7 @@ public class TwitterProducer {
     }
 
     public KafkaProducer<String, String> createKafkaProducer() {
+        String HOST = resourcesProp.getProperty("producer.host");
         // create Producer props
         Properties props = new Properties();
         props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, HOST);
@@ -114,6 +113,12 @@ public class TwitterProducer {
     }
 
     public Client createTwitterClient(BlockingQueue<String> msgQueue) {
+        // to get token -> https://developer.twitter.com
+        String consumerKey = resourcesProp.getProperty("producer.consumerKey");
+        String consumerSecret = resourcesProp.getProperty("producer.consumerSecret");
+        String token = resourcesProp.getProperty("producer.token");
+        String secret = resourcesProp.getProperty("producer.secret");
+
         /** Declare the host you want to connect to, the endpoint, and authentication (basic auth or oauth) */
         Hosts hosebirdHosts = new HttpHosts(Constants.STREAM_HOST);
         StatusesFilterEndpoint hosebirdEndpoint = new StatusesFilterEndpoint();
@@ -131,5 +136,16 @@ public class TwitterProducer {
 
         Client hosebirdClient = builder.build();
         return hosebirdClient;
+    }
+
+    private static Properties getProperties() {
+        Properties prop = null;
+        try (InputStream output = TwitterProducer.class.getClassLoader().getResourceAsStream("resources.properties")) {
+            prop = new Properties();
+            prop.load(output);
+        } catch (IOException io) {
+            io.printStackTrace();
+        }
+        return prop;
     }
 }
